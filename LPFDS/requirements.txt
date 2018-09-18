@@ -1,0 +1,8 @@
+numpy
+scikit-learn
+matplotlib
+csv
+scipy
+lightfm
+tweepy
+gym
