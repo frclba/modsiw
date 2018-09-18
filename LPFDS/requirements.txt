@@ -6,3 +6,4 @@ scipy
 lightfm
 tweepy
 gym
+tensorflow
