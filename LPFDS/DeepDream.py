@@ -11,7 +11,7 @@ import zipfile
 def main():
     # Step 1 - Download google's pre-trained neural network
     url = 'https://storage.googleapis.com/download.tensorflow.org/models/inception5h.zip'
-    data_dir = '../data/'
+    data_dir = 'data/'
     model_name = os.path.split(url)[-1]
     local_zip_file = os.path.join(data_dir, model_name)
 
@@ -20,7 +20,6 @@ def main():
         model_url = urllib.request.urlopen(url)
         with open(local_zip_file, 'wb') as output:
             output.write(model_url.read())
-
         #Extract
         with zipfile.ZipFile(local_zip_file, 'r') as zip_ref:
             zip_ref.extractall(data_dir)
@@ -53,9 +52,9 @@ def main():
 
     print('Number of layers ', len(layers))
     print('Total number of feature channels: ', sum(features_num))
-
     #End main
 
+    ########################################################################################################
     # Helper functions for TF Graph visualization
     def strip_consts(graph_def, max_const_size=32):
         strip_def = tf.GraphDef()
@@ -68,37 +67,32 @@ def main():
                 if size > max_const_size:
                     tensor.tensor_content = "<stripped %d bytes>" % size
             return strip_def
-
     #End strip_consts
 
     def rename_nodes(graph_def, rename_func):
         res_def = tf.GraphDef()
         for n0 in graph_def.node:
-            n = res_def.node.add()
+            n = res_def.node.add()  #pylint: disable=maybe-no-member
             n.MergeFrom(n0)
             n.name = rename_func(n.name)
             for i, s in enumerate(n.input):
                 n.input[i] = rename_func(
                     s) if s[0] != '^' else '^' + rename_func(s[1:])
         return res_def
-
     #End rename_nodes
 
     def showarray(a):
         a = np.uint8(np.clip(a, 0, 1) * 255)
         plt.imshow(a)
         plt.show()
-
     #End showarray
 
     def visstd(a, s=0.1):
         return (a - a.mean()) / max(a.std(), 1e-4) * s + 0.5
-
     #End visstd
 
     def T(layer):
         return graph.get_tensor_by_name("import/%s:0" % layer)
-
     #End T
 
     def render_naive(t_obj, img0=img_noise, iter_n=20, step=1.0):
@@ -111,7 +105,6 @@ def main():
             g /= g.std() + 1e-8
             img += g * step
         showarray(visstd(img))
-
     #End render_naive
 
     def tffunc(*argtypes):
@@ -140,7 +133,8 @@ def main():
     def calc_grad_tiled(img, t_grad, tile_size=512):
         '''Compute the value of tensor t_grad over the image in a tiled way.
         Random shifts are applied to the image to blur tile boundaries over 
-        multiple iterations.'''
+        multiple iterations.
+        '''
         sz = tile_size
         h, w = img.shape[:2]
         sx, sy = np.random.randint(sz, size=2)
@@ -152,7 +146,44 @@ def main():
                 g = sess.run(t_grad, {t_input: sub})
                 grad[y:y + sz, x:x + sz] = g
         return np.roll(np.roll(grad, -sx, 1), -sy, 0)
+########################################################################################################
 
+    def render_deepdream(t_obj, img0=img_noise, iter_n=10, step=1.5, octave_n=4, octave_scale=1.4):
+        t_score = tf.reduce_mean(t_obj)
+        t_grad = tf.gradients(t_score, t_input)[0]
 
+        img = img0
+        octaves = []
+
+        # split the image into a number of octaves
+        for _ in range(octave_n-1):
+            hw = img.shape[:2]
+            lo = resize(img, np.int32(np.float32(hw)/octave_scale))
+            hi = img-resize(lo, hw)
+            img = lo
+            octaves.append(hi)
+
+        # generate details octave by octave
+        for octave in range(octave_n):
+            if octave > 0:
+                hi = octaves[-octave]
+                img = resize(img, hi.shape[:2]) + hi
+            for _ in range(iter_n):
+                g = calc_grad_tiled(img, t_grad)
+                img += g * (step / (np.abs(g).mean() + 1e-7))
+            showarray(img/255.0)
+
+    #Step 3 - Pick a layer to enhance our image
+    layer = 'mixed4d_3x3_bottleneck_pre_relu'
+    channel = 139
+    
+    #open image
+    img0 = PIL.Image.open('data/pilatus800.jpg')
+    img0 = np.float32(img0)
+
+    #Step 4 - Apply gradient ascent to layer
+    render_deepdream(tf.square(T('mixed4c')), img0)
+
+ 
 if __name__ == '__main__':
     main()
