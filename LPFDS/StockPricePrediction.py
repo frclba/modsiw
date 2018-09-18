@@ -6,7 +6,6 @@ from matplotlib.dates import DateFormatter
 
 
 # plt.switch_backend('TkAgg')
-
 dates = []
 prices = []
 
